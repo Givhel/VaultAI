@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Data directories (excluded from git, created at runtime)
+chroma_data/
+vault_data/
+mlruns/
+
+# Trained model (large — distribute separately or retrain)
+models/ner_pii/
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

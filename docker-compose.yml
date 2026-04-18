@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  vault-ai:
+    build: .
+    container_name: vault-ai-app
+    ports:
+      - "8501:8501"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - DP_EPSILON=${DP_EPSILON:-1.0}
+      - MLFLOW_TRACKING_URI=http://mlflow:5001
+    volumes:
+      - chroma_data:/app/chroma_data
+      - vault_data:/app/vault_data
+    depends_on:
+      - mlflow
+    restart: unless-stopped
+
+  mlflow:
+    image: python:3.11-slim
+    container_name: vault-ai-mlflow
+    command: >
+      bash -c "pip install mlflow==2.16.2 &&
+               mlflow server
+               --host 0.0.0.0
+               --port 5001
+               --backend-store-uri sqlite:///mlflow.db
+               --default-artifact-root /mlflow/artifacts"
+    ports:
+      - "5001:5001"
+    volumes:
+      - mlflow_data:/mlflow
+    restart: unless-stopped
+
+volumes:
+  chroma_data:
+  vault_data:
+  mlflow_data:
