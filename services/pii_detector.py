@@ -5,15 +5,13 @@ Hybrid approach:
   ▸ When USE_TRAINED_NER=true AND models/ner_pii/ exists, also loads
     the fine-tuned spaCy NER model and runs BOTH detectors, merging
     results so that entities detected by *either* system are captured.
-  ▸ This specifically fixes missing PERSON detections: Presidio's
-    base spaCy model is strong on names, while the fine-tuned model
-    may miss them due to limited training data.
 """
 
 import os
 import re
 from pathlib import Path
 from presidio_analyzer import AnalyzerEngine
+from presidio_analyzer.nlp_engine import NlpEngineProvider
 
 _FAKE_LOCATIONS = {
     "mobile", "phone", "email", "fax", "web", "url",
@@ -81,12 +79,10 @@ def _remove_overlaps(entities: list) -> list:
 
 
 def _merge_entity_lists(primary: list, secondary: list) -> list:
-    """Merge two entity lists: keep all primary, add non-overlapping secondary."""
     merged = list(primary)
     for sec in secondary:
         overlaps = False
         for pri in primary:
-            # Check if spans overlap
             if sec["start"] < pri["end"] and sec["end"] > pri["start"]:
                 overlaps = True
                 break
@@ -96,15 +92,15 @@ def _merge_entity_lists(primary: list, secondary: list) -> list:
 
 
 class PIIDetector:
-    """
-    Detects PII using a hybrid approach:
-    - Always runs Presidio for reliable baseline detection.
-    - When USE_TRAINED_NER=true, also runs the fine-tuned NER model
-      and merges results, ensuring entities from both systems are captured.
-    """
     def __init__(self):
-        # Always initialize Presidio
-        self._analyzer = AnalyzerEngine()
+        # Force en_core_web_sm — never load lg
+        nlp_configuration = {
+            "nlp_engine_name": "spacy",
+            "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}],
+        }
+        provider = NlpEngineProvider(nlp_configuration=nlp_configuration)
+        nlp_engine = provider.create_engine()
+        self._analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
 
         # Optionally load trained NER model
         use_trained = os.getenv("USE_TRAINED_NER", "false").lower() == "true"
@@ -117,7 +113,7 @@ class PIIDetector:
             except Exception as e:
                 print(f"WARNING: Could not load trained NER model: {e}")
         elif use_trained and not TRAINED_MODEL_DIR.exists():
-            print("WARNING: USE_TRAINED_NER=true but models/ner_pii/ not found. Run train_ner.py first.")
+            print("WARNING: USE_TRAINED_NER=true but models/ner_pii/ not found.")
 
         self._mode = "hybrid" if self._has_trained else "presidio"
 
@@ -126,17 +122,12 @@ class PIIDetector:
         return self._mode
 
     def detect(self, text: str, language: str = "en", score_threshold: float = 0.4) -> list:
-        # Always run Presidio
         presidio_entities = self._detect_presidio(text, language, score_threshold)
-
         if self._has_trained:
-            # Also run trained NER and merge
             trained_entities = self._detect_trained(text)
-            # Merge: use trained as primary (domain-tuned), add non-overlapping Presidio results
             entities = _merge_entity_lists(trained_entities, presidio_entities)
         else:
             entities = presidio_entities
-
         entities = [e for e in entities if not _is_false_positive(e, text)]
         entities = _remove_overlaps(entities)
         return entities
