@@ -1,5 +1,6 @@
+pyarrow==14.0.1
 # Core
-streamlit==1.39.0
+streamlit==1.38.0
 python-dotenv==1.0.1
 
 # PII Detection
